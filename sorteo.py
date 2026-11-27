@@ -64,3 +64,36 @@ def sortear(nombres, fijas=None, prohibidas=None, intentos=200):
     if not backtrack(0):
         raise SorteoError("Con esas excepciones no hay ningún sorteo posible. Revisá las reglas.")
     return dict(asignacion)
+
+
+# ------------------------------------------------------------------ Links
+import base64
+import json
+
+# La página que muestra el resultado (GitHub Pages del repo, carpeta docs/)
+BASE_URL = "https://proben1318.github.io/amigo-invisible/"
+_CLAVE = b"amigo-invisible"
+
+
+def codificar(quien, a_quien):
+    """Codifica la pareja para que no se lea a simple vista en el link."""
+    datos = json.dumps({"d": quien, "r": a_quien}, ensure_ascii=False).encode("utf-8")
+    mezclado = bytes(b ^ _CLAVE[i % len(_CLAVE)] for i, b in enumerate(datos))
+    return base64.urlsafe_b64encode(mezclado).decode("ascii").rstrip("=")
+
+
+def decodificar(codigo):
+    codigo += "=" * (-len(codigo) % 4)
+    mezclado = base64.urlsafe_b64decode(codigo)
+    datos = bytes(b ^ _CLAVE[i % len(_CLAVE)] for i, b in enumerate(mezclado))
+    d = json.loads(datos.decode("utf-8"))
+    return d["d"], d["r"]
+
+
+def link(quien, a_quien, base=BASE_URL):
+    return f"{base}#{codificar(quien, a_quien)}"
+
+
+def mensaje(quien, a_quien):
+    return (f"🎁 ¡Hola {quien}! Este es tu link del amigo invisible. "
+            f"Abrilo vos solo/a y no se lo muestres a nadie 🤫\n{link(quien, a_quien)}")

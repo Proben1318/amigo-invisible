@@ -10,8 +10,10 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.uix.popup import Popup
 from kivy.metrics import dp
+from kivy.utils import platform
+from kivy.core.clipboard import Clipboard
 
-from sorteo import sortear, SorteoError
+from sorteo import sortear, SorteoError, mensaje
 
 ROJO = (0.80, 0.15, 0.20, 1)
 VERDE = (0.10, 0.55, 0.30, 1)
@@ -28,6 +30,24 @@ def aviso(titulo, texto):
     p = Popup(title=titulo, content=contenido, size_hint=(0.85, 0.5))
     btn.bind(on_release=p.dismiss)
     p.open()
+
+
+def compartir(texto):
+    """En Android abre el menú de compartir (WhatsApp, etc.). En la compu copia el texto."""
+    if platform == "android":
+        from jnius import autoclass, cast
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Intent = autoclass("android.content.Intent")
+        String = autoclass("java.lang.String")
+        intent = Intent()
+        intent.setAction(Intent.ACTION_SEND)
+        intent.setType("text/plain")
+        intent.putExtra(Intent.EXTRA_TEXT, cast("java.lang.CharSequence", String(texto)))
+        chooser = Intent.createChooser(intent, cast("java.lang.CharSequence", String("Enviar link")))
+        PythonActivity.mActivity.startActivity(chooser)
+    else:
+        Clipboard.copy(texto)
+        aviso("Copiado", "El mensaje con el link quedó copiado.\nPegalo en WhatsApp.")
 
 
 def lista_scroll():
@@ -52,7 +72,7 @@ class PantallaNombres(Screen):
     def __init__(self, **kw):
         super().__init__(**kw)
         raiz = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
-        raiz.add_widget(Label(text="🎁 Amigo Invisible", font_size="28sp",
+        raiz.add_widget(Label(text="Amigo Invisible", font_size="28sp",
                               size_hint_y=None, height=dp(60)))
 
         entrada = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(6))
@@ -67,7 +87,7 @@ class PantallaNombres(Screen):
         sv, self.grid = lista_scroll()
         raiz.add_widget(sv)
 
-        sig = Button(text="Siguiente: excepciones →", size_hint_y=None, height=dp(56),
+        sig = Button(text="Siguiente: excepciones >", size_hint_y=None, height=dp(56),
                      font_size="18sp")
         sig.bind(on_release=self.siguiente)
         raiz.add_widget(sig)
@@ -119,14 +139,14 @@ class PantallaExcepciones(Screen):
         self.sp_a = Spinner(text="Quién regala")
         self.sp_b = Spinner(text="A quién")
         sel.add_widget(self.sp_a)
-        sel.add_widget(Label(text="→", size_hint_x=None, width=dp(30), font_size="22sp"))
+        sel.add_widget(Label(text=">", size_hint_x=None, width=dp(30), font_size="22sp"))
         sel.add_widget(self.sp_b)
         raiz.add_widget(sel)
 
         botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(6))
-        bf = Button(text="✔ Fija (le toca sí o sí)", background_color=VERDE)
+        bf = Button(text="Fija (le toca sí o sí)", background_color=VERDE)
         bf.bind(on_release=lambda *_: self.agregar("fija"))
-        bp = Button(text="✖ Prohibida", background_color=ROJO)
+        bp = Button(text="Prohibida", background_color=ROJO)
         bp.bind(on_release=lambda *_: self.agregar("prohibida"))
         botones.add_widget(bf)
         botones.add_widget(bp)
@@ -136,9 +156,9 @@ class PantallaExcepciones(Screen):
         raiz.add_widget(sv)
 
         nav = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(6))
-        atras = Button(text="← Nombres", background_color=GRIS)
+        atras = Button(text="< Nombres", background_color=GRIS)
         atras.bind(on_release=lambda *_: setattr(self.manager, "current", "nombres"))
-        sortear_btn = Button(text="🎲 ¡SORTEAR!", font_size="20sp", background_color=VERDE)
+        sortear_btn = Button(text="¡SORTEAR!", font_size="20sp", background_color=VERDE)
         sortear_btn.bind(on_release=self.sortear)
         nav.add_widget(atras)
         nav.add_widget(sortear_btn)
@@ -178,10 +198,10 @@ class PantallaExcepciones(Screen):
     def refrescar(self):
         self.grid.clear_widgets()
         for p in self.app.fijas:
-            self.grid.add_widget(fila(f"✔ {p[0]} → {p[1]}",
+            self.grid.add_widget(fila(f"FIJA: {p[0]} > {p[1]}",
                                       lambda p=p: self.quitar(self.app.fijas, p)))
         for p in self.app.prohibidas:
-            self.grid.add_widget(fila(f"✖ {p[0]} ↛ {p[1]}",
+            self.grid.add_widget(fila(f"NO: {p[0]} > {p[1]}",
                                       lambda p=p: self.quitar(self.app.prohibidas, p)))
 
     def quitar(self, lista, p):
@@ -203,7 +223,7 @@ class PantallaResultado(Screen):
         super().__init__(**kw)
         raiz = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
         raiz.add_widget(Label(
-            text="Pasá el celular: cada uno toca SU nombre\npara ver a quién le regala",
+            text="Tocá 'Link' para mandarle a cada uno el suyo\n(o tocá su nombre para verlo en este celular)",
             font_size="18sp", halign="center", size_hint_y=None, height=dp(70)))
         sv, self.grid = lista_scroll()
         raiz.add_widget(sv)
@@ -222,13 +242,22 @@ class PantallaResultado(Screen):
     def on_pre_enter(self, *_):
         self.grid.clear_widgets()
         for n in self.app.nombres:
-            b = Button(text=n, size_hint_y=None, height=dp(56), font_size="20sp")
+            f = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(6))
+            b = Button(text=n, font_size="20sp")
             b.bind(on_release=lambda btn, n=n: self.revelar(btn, n))
-            self.grid.add_widget(b)
+            f.add_widget(b)
+            env = Button(text="Link", size_hint_x=None, width=dp(110), background_color=VERDE)
+            env.bind(on_release=lambda btn, n=n: self.enviar(btn, n))
+            f.add_widget(env)
+            self.grid.add_widget(f)
+
+    def enviar(self, btn, nombre):
+        compartir(mensaje(nombre, self.app.resultado[nombre]))
+        btn.text = "Enviado"
 
     def revelar(self, btn, nombre):
         contenido = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
-        lbl = Label(text=f"¿Sos {nombre}?\n\nTocá para ver (que nadie mire 👀)",
+        lbl = Label(text=f"¿Sos {nombre}?\n\nTocá para ver (que nadie mire)",
                     halign="center", font_size="20sp")
         contenido.add_widget(lbl)
         ver = Button(text="Ver", size_hint_y=None, height=dp(56), background_color=VERDE)
@@ -236,7 +265,7 @@ class PantallaResultado(Screen):
         p = Popup(title=nombre, content=contenido, size_hint=(0.9, 0.6), auto_dismiss=False)
 
         def mostrar(*_):
-            lbl.text = f"Le regalás a:\n\n[b]{self.app.resultado[nombre]}[/b] 🎁"
+            lbl.text = f"Le regalás a:\n\n[b]{self.app.resultado[nombre]}[/b]"
             lbl.markup = True
             lbl.font_size = "26sp"
             ver.text = "Listo, ocultar"
@@ -245,7 +274,7 @@ class PantallaResultado(Screen):
 
         def cerrar(*_):
             p.dismiss()
-            btn.text = f"{nombre} ✔ (ya vio)"
+            btn.text = f"{nombre} (ya vio)"
             btn.disabled = True
 
         ver.bind(on_release=mostrar)
