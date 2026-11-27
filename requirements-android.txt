@@ -1,0 +1,3 @@
+# Para generar el APK (solo Linux / WSL / macOS)
+buildozer>=1.5.0
+cython>=3.0

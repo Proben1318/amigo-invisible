@@ -1,0 +1,2 @@
+# Para correr la app en la compu (Windows / Linux / macOS)
+kivy>=2.3.0
